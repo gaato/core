@@ -1,0 +1,173 @@
+----
+import {
+  "moonbitlang/async@0.22.5",
+  "moonbitlang/async@0.22.5/fs",
+  "moonbitlang/async@0.22.5/process",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/string",
+}
+----
+
+///|
+priv struct TestInfo {
+  index : Int32
+  name : Json
+} derive(@json.FromJson)
+
+///|
+priv struct Case {
+  file : String
+  index : Int32
+  name : String
+}
+
+///|
+fn setting(name : String, fallback : String) -> String {
+  @env.get_env_var(name).unwrap_or(fallback)
+}
+
+///|
+async fn run_command(
+  source : String,
+  log_dir : String,
+  label : String,
+  args : Array[String],
+  timeout_ms : Int32,
+) -> Int32 {
+  let started = @env.now()
+  let start : Json = { "event": "start", "label": label, "args": args }
+  println(start.stringify())
+  let stdout = @process.redirect_to_file("\{log_dir}/\{label}.stdout.log")
+  let stderr = @process.redirect_to_file("\{log_dir}/\{label}.stderr.log")
+  let cancel_handler = if setting("OS", "") == "Windows_NT" {
+    @process.CancellationHandler(pid => {
+      // Killing the process tree also closes test executables launched by moon.
+      ignore(
+        @process.run(
+          "taskkill",
+          ["/PID", pid.to_string(), "/T", "/F"],
+          cancel_handler=@process.hard_cancel(),
+        ),
+      )
+    })
+  } else {
+    @process.hard_cancel()
+  }
+  let code = @async.with_timeout(timeout_ms, () => {
+    @process.run("moon", args, cwd=source, stdout~, stderr~, cancel_handler~)
+  }) catch {
+    @async.TimeoutError => 124
+    error => {
+      @fs.write_file("\{log_dir}/\{label}.error.log", error.to_string())
+      125
+    }
+  }
+  let result : Json = {
+    "event": "finish",
+    "label": label,
+    "args": args,
+    "exit_code": code,
+    "elapsed_ms": @env.now() - started,
+  }
+  println(result.stringify())
+  @fs.write_file(
+    "\{log_dir}/summary.jsonl",
+    result.stringify() + "\n",
+    append=true,
+  )
+  code
+}
+
+///|
+async fn http_cases(source : String, mode : String) -> Array[Case] {
+  let cases : Array[Case] = []
+  let seen : Map[String, Unit] = Map([])
+  for kind in ["internal", "blackbox", "whitebox"] {
+    let file = "\{source}/_build/native/\{mode}/test/async/http/__\{kind}_test_info.json"
+    let inventory : Map[String, Map[String, Array[TestInfo]]] = @json.from_json(
+      @json.parse(@fs.read_file(file).text()),
+    )
+    for _, files in inventory {
+      for file, tests in files {
+        for item in tests {
+          let key = "\{file}:\{item.index}"
+          if !seen.contains(key) {
+            seen[key] = ()
+            let name = match item.name {
+              String(name) => name
+              _ => "(unnamed)"
+            }
+            cases.push({ file, index: item.index, name, })
+          }
+        }
+      }
+    }
+  }
+  cases.sort_by((a, b) => {
+    if a.file < b.file {
+      -1
+    } else if a.file > b.file {
+      1
+    } else {
+      a.index - b.index
+    }
+  })
+  cases
+}
+
+///|
+async fn main {
+  let source = @fs.realpath(setting("DIAG_SOURCE", "."))
+  let mode = setting("DIAG_MODE", "debug")
+  guard mode is ("debug" | "release") else { fail("invalid DIAG_MODE") }
+  let phase = setting("DIAG_PHASE", "http")
+  guard phase is ("http" | "whole") else { fail("invalid DIAG_PHASE") }
+  let log_dir = setting(
+    "DIAG_LOG_DIR",
+    "\{source}/_build/pr4477-diagnostics/\{mode}/\{phase}",
+  )
+  @fs.mkdir(log_dir, recursive=true, allow_exist=true)
+  let mode_flags = if mode == "release" { ["--release"] } else { [] }
+  let package_flags = if phase == "http" { ["async/http"] } else { [] }
+  let build_args = [
+    "test", ..package_flags, "--target", "native", "--build-only", ..mode_flags,
+  ]
+  let build = run_command(source, log_dir, "build", build_args, 1200000)
+  guard build == 0 else { fail("diagnostic build failed: \{build}") }
+  let mut failed = 0
+  if phase == "http" {
+    let cases = http_cases(source, mode)
+    guard !cases.is_empty() else { fail("HTTP test inventory is empty") }
+    let limit = @string.parse_int(
+      setting("DIAG_LIMIT", cases.length().to_string()),
+    )
+    for index, case in cases {
+      if index >= limit {
+        break
+      }
+      println("case \{index}: \{case.file}:\{case.index} \{case.name}")
+      let args = [
+        "test",
+        "async/http/\{case.file}",
+        "--index",
+        case.index.to_string(),
+        "--target",
+        "native",
+        "--verbose",
+        ..mode_flags,
+      ]
+      if run_command(source, log_dir, "case-\{index}", args, 120000) != 0 {
+        failed += 1
+      }
+    }
+  } else {
+    let args = ["test", "--target", "native", "--verbose", ..mode_flags]
+    if run_command(source, log_dir, "whole", args, 1200000) != 0 {
+      failed += 1
+    }
+  }
+  guard failed == 0 else {
+    fail("\{failed} diagnostic commands failed; see \{log_dir}")
+  }
+}
