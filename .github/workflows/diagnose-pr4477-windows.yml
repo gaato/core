@@ -15,9 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         revision:
-          - label: base
-            sha: b80c2f1436558397b1210092e8b4c5527f4aecd4
-          - label: pr-merge
+          - label: pr-without-outer-close
             sha: 02a656e79f2f08d5343f0c859e0e10ef5bf79c75
         mode: [debug, release]
     env:
@@ -43,6 +41,12 @@ jobs:
           ref: ${{ matrix.revision.sha }}
           path: source
           persist-credentials: false
+
+      - name: Apply only the server cleanup experiment
+        shell: bash
+        run: |
+          git -C source apply ../diagnostics/experiments/pr4477-server-close-order.patch
+          git -C source diff -- async/http/proxy_test.mbt
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0

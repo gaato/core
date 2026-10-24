@@ -1,0 +1,20 @@
+diff --git a/async/http/proxy_test.mbt b/async/http/proxy_test.mbt
+index 6013cc46..e94acd91 100644
+--- a/async/http/proxy_test.mbt
++++ b/async/http/proxy_test.mbt
+@@ -115,7 +115,6 @@ async test "forward proxy receives target Host and persistent credentials" {
+   @async.with_timeout(5000) <| () => {
+     @async.with_task_group() <| group => {
+       let server = @http.Server(@socket.Addr::parse("127.0.0.1:0"))
+-      defer server.close()
+       group.spawn_bg(no_wait=true) <| () => {
+         server.run_forever(allow_failure=false) <| ((request, conn) => {
+           inspect(
+@@ -149,7 +148,6 @@ async test "automatic CONNECT uses target Host and proxy credentials" {
+   @async.with_timeout(5000) <| () => {
+     @async.with_task_group() <| group => {
+       let server = @http.Server(@socket.Addr::parse("127.0.0.1:0"))
+-      defer server.close()
+       group.spawn_bg(no_wait=true) <| () => {
+         server.run_forever(allow_failure=false) <| ((request, conn) => {
+           debug_inspect(request.meth, content="Connect")
