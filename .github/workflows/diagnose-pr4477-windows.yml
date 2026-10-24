@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Diagnose the full native suite
-        if: always()
+        if: success()
         timeout-minutes: 40
         env:
           DIAG_PHASE: whole
