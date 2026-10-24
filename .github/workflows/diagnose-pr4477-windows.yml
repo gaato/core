@@ -26,6 +26,10 @@ jobs:
       DIAG_SOURCE: ${{ github.workspace }}/source
       DIAG_MODE: ${{ matrix.mode }}
     steps:
+      - name: Preserve LF bytes as in the original CI
+        shell: bash
+        run: git config --global core.autocrlf false
+
       - name: Check out diagnostic tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
