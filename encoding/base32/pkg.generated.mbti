@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbitlang/core/encoding/base32"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn decode(StringView, casefold? : Bool, ignore_whitespace? : Bool) -> Bytes raise Malformed
+
+pub fn encode(BytesView, padding? : Bool) -> String
+
+// Errors
+pub suberror Malformed {
+  Malformed(StringView)
+} derive(@debug.Debug)
+
+// Types and methods
+
+// Type aliases
+
+// Traits
