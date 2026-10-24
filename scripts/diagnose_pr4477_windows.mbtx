@@ -71,10 +71,12 @@ async fn run_command(
     "elapsed_ms": @env.now() - started,
   }
   println(result.stringify())
+  @fs.write_file("\{log_dir}/\{label}.json", result.stringify() + "\n")
   @fs.write_file(
     "\{log_dir}/summary.jsonl",
     result.stringify() + "\n",
     append=true,
+    create_mode=OpenOrCreate,
   )
   code
 }
