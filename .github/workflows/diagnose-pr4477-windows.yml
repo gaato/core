@@ -66,6 +66,15 @@ jobs:
         shell: bash
         run: moon run --target native diagnostics/scripts/diagnose_pr4477_windows.mbtx
 
+      - name: Save HTTP logs before the full-suite run
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr4477-${{ matrix.revision.label }}-${{ matrix.mode }}-http
+          path: ${{ runner.temp }}/pr4477-logs/http
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: Diagnose the full native suite
         if: always()
         timeout-minutes: 40
